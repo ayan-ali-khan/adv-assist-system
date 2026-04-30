@@ -1,0 +1,105 @@
+Image Captioning
+Slide Text
+AI-Powered Assistive System for the Visually Impaired
+Image Captioning:
+Algorithm: Image Captioning using the BLIP Model. This module utilizes the BLIP (Bootstrapping Language-Image Pretraining) model, which combines a vision transformer for image feature extraction and a language model for generating descriptive captions.
+________________________________________
+Console Output (Right Side)
+Device: cpu
+Loading checkpoint...
+load checkpoint from ./checkpoints/model_large_caption.pth
+Model loaded to cpu
+Press 'Space' to capture an image and generate a caption.
+Processing image...
+Generated Caption: a watch sitting on top of a wooden table
+
+
+Face Recognition:
+The system can recognize stored faces and announce the name of the person. If an unknown face is detected, it prompts the user to add the new face to the database for future recognition.
+________________________________________
+Code (Left Panel)
+import face_recognition
+import os
+import cv2
+import numpy as np
+
+FACE_DIR = "data/faces/"
+
+def recognize_faces(frame):
+    rgb_frame = np.ascontiguousarray(frame[:, :, ::-1])
+
+    # Load known faces
+    known_faces = []
+    known_names = []
+
+    for filename in os.listdir(FACE_DIR):
+        if filename.endswith(".jpg") or filename.endswith(".png"):
+            image = face_recognition.load_image_file(os.path.join(FACE_DIR, filename))
+            encoding = face_recognition.face_encodings(image)[0]
+            known_faces.append(encoding)
+            known_names.append(os.path.splitext(filename)[0])
+
+    face_locations = face_recognition.face_locations(rgb_frame)
+    face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+
+    names = []
+    for face_encoding in face_encodings:
+        matches = face_recognition.compare_faces(known_faces, face_encoding)
+        if True in matches:
+            match_index = matches.index(True)
+            name = known_names[match_index]
+        else:
+            name = "Unknown"
+        names.append(name)
+
+    return face_locations, names
+________________________________________
+Code (Right Panel)
+def save_new_face(frame, face_location, name):
+    top, right, bottom, left = face_location
+    face_image = frame[top:bottom, left:right]
+    cv2.imwrite(f"{FACE_DIR}{name}.jpg", face_image)
+________________________________________
+This is real executable Python code using:
+•	face_recognition
+•	OpenCV
+•	NumPy
+It implements:
+•	Loading known faces from a folder
+•	Matching faces in webcam frames
+•	Saving new unknown faces to disk
+This is a solid, production-style face recognition pipeline.
+
+Text Reading:
+Algorithm: Optical Character Recognition (OCR) using Tesseract. This module extracts text from images using OCR technology. Although implemented, further optimization is required to improve the accuracy of text recognition in different environments.
+________________________________________
+Window Title (Camera)
+Live Webcam
+________________________________________
+Text in the Captured Image
+Hello World
+________________________________________
+Console Output
+Press the 'Space' bar to capture a frame and extract text.
+Press 'q' to quit.
+Detected Text: Hello World
+
+
+Slide Text
+Currency Detection:
+Algorithm: Currency Detection using a Deep Learning Model. This module utilizes a Convolutional Neural Network (CNN) trained on images of different currency denominations to classify and identify them accurately.
+________________________________________
+2. Object Detection Slide
+Header Text
+AI-Powered Assistive System for the Visually Impaired
+Object Detection:
+Algorithm: YOLO (You Only Look Once) - Pre-trained Model. The system detects objects in real-time using the YOLO algorithm, which is known for its fast and accurate object detection. Currently, the detection is limited and will require further fine-tuning to increase accuracy and detect a broader range of objects.
+________________________________________
+Window Title
+Object Detection
+________________________________________
+On-Screen Detection Labels
+chair 76.80%
+bottle 35.40%
+
+

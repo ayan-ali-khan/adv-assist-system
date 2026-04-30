@@ -1,0 +1,446 @@
+.appShell {
+  min-height: 100vh;
+  background: inherit;
+  color: inherit;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.appHeader {
+  padding: 20px 16px;
+  border-bottom: 1px solid;
+  border-color: rgba(0, 0, 0, 0.15);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.light-theme .appHeader {
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.dark-theme .appHeader,
+:root:not(.light-theme) .appHeader {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.appHeaderLeft {
+  flex: 1;
+}
+
+.appTitle {
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  font-size: 22px; /* Increased from 18px */
+}
+
+.appSubtitle {
+  margin-top: 6px;
+  font-size: 15px; /* Increased from 13px */
+  opacity: 0.8;
+}
+
+.appHeaderRight {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.themeToggle,
+.installBtn {
+  appearance: none;
+  background: transparent;
+  border: 2px solid currentColor;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.themeToggle:hover,
+.installBtn:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+.themeToggle:active,
+.installBtn:active {
+  transform: scale(0.95);
+}
+
+.appMain {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 12px;
+}
+
+@media (min-width: 980px) {
+  .appMain {
+    grid-template-columns: 2fr 1fr;
+    align-items: stretch;
+  }
+}
+
+.card {
+  background: inherit;
+  border: 1px solid;
+  border-radius: 14px;
+  overflow: hidden;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.light-theme .card {
+  background: #f5f5f5;
+  border-color: rgba(0, 0, 0, 0.14);
+}
+
+.dark-theme .card,
+:root:not(.light-theme) .card {
+  background: #0b0b0b;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.cameraCard {
+  padding: 12px;
+}
+
+.controlsCard {
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.signCard {
+  padding: 12px;
+  display: grid;
+  gap: 14px;
+}
+
+.statusRow {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.statusLabel {
+  font-size: 15px; /* Increased from 12px */
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+.statusValue {
+  font-size: 16px; /* Increased from 14px */
+  word-break: break-word;
+  font-weight: 500;
+}
+
+.buttonRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.buttonRow + .buttonRow {
+  margin-top: 2px;
+}
+
+.btn {
+  appearance: none;
+  background: currentColor;
+  color: inherit;
+  border: 2px solid currentColor;
+  border-radius: 12px;
+  padding: 14px 16px; /* Increased padding */
+  font-weight: 700;
+  font-size: 16px; /* Increased from 14px */
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.light-theme .btn {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+.dark-theme .btn,
+:root:not(.light-theme) .btn {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+}
+
+@media (max-width: 420px) {
+  .statusRow {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .buttonRow {
+    grid-template-columns: 1fr;
+  }
+
+  .appHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .appHeaderRight {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .themeToggle,
+  .installBtn {
+    font-size: 14px;
+    padding: 8px 12px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+.hint {
+  font-size: 16px; /* Increased from 12px */
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+.signSection {
+  display: grid;
+  gap: 8px;
+}
+
+.signHeader {
+  font-size: 16px; /* Increased from 13px */
+  font-weight: 600;
+}
+
+.signRow {
+  display: flex;
+  gap: 8px;
+}
+
+.signInput {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid;
+  background: inherit;
+  color: inherit;
+  padding: 12px 14px; /* Increased padding */
+  font-size: 16px; /* Increased from 13px */
+  transition: all 0.3s ease;
+}
+
+.light-theme .signInput {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: #fff;
+}
+
+.dark-theme .signInput,
+:root:not(.light-theme) .signInput {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: #050505;
+}
+
+.signInput::placeholder {
+  opacity: 0.4;
+}
+
+.signLabel {
+  font-size: 14px; /* Increased from 11px */
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.signSurface {
+  min-height: 44px; /* Increased from 36px */
+  border-radius: 10px;
+  border: 1px solid;
+  padding: 12px 14px; /* Increased padding */
+  font-size: 16px; /* Increased from 13px */
+  transition: all 0.3s ease;
+}
+
+.light-theme .signSurface {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: #fff;
+}
+
+.dark-theme .signSurface,
+:root:not(.light-theme) .signSurface {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: transparent;
+}
+
+.signGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
+  gap: 4px;
+}
+
+.signCell {
+  border-radius: 8px;
+  border: 1px solid;
+  padding: 8px 0; /* Increased padding */
+  text-align: center;
+  font-size: 15px; /* Increased from 12px */
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.light-theme .signCell {
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.dark-theme .signCell,
+:root:not(.light-theme) .signCell {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.cameraWrap {
+  display: grid;
+  gap: 10px;
+}
+
+.cameraStage {
+  position: relative;
+  width: 100%;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+
+.cameraVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cameraOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cameraFooter {
+  display: grid;
+  gap: 6px;
+  font-size: 15px; /* Increased from 12px */
+  opacity: 0.85;
+}
+
+.cameraFooterLabel {
+  opacity: 0.8;
+}
+
+.errorText {
+  color: inherit;
+  background: rgba(255, 0, 0, 0.1);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+  padding: 12px; /* Increased padding */
+  border-radius: 12px;
+  font-size: 15px; /* Increased font size */
+}
+
+.aslStatus {
+  display: grid;
+  gap: 10px;
+}
+
+.cameraOverlayHand {
+  /* always on top of the COCO canvas */
+  z-index: 3 !important;
+  pointer-events: none;
+}
+
+/* Make sure the base COCO canvas is z-index 1 */
+.cameraOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+ 
+/* ─── Sign display strip ─────────────────────────────────────────────────────── */
+.signStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  align-items: flex-end;
+}
+
+.light-theme .signStrip {
+  background: #fff1d2;
+  border: 1.5px solid #d6cba8;
+}
+
+.dark-theme .signStrip,
+:root:not(.light-theme) .signStrip {
+  background: #1e1c14;
+  border: 1.5px solid #3a3620;
+}
+
+.signCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  /* no border, no background — images float freely */
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  transition: transform 0.15s ease;
+}
+
+.signCell:hover {
+  transform: scale(1.1);
+}
+
+.signCell img {
+  display: block;
+  /* images are hand drawings — mix-blend-mode makes white bg transparent */
+  /* mix-blend-mode: multiply; */
+}
+
+.dark-theme .signCell img,
+:root:not(.light-theme) .signCell img {
+  mix-blend-mode: screen;
+  filter: invert(1);
+}
+
+.signCell .signCellLabel {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.5;
+  letter-spacing: 0.5px;
+}
+
+/* SVG fallback (space char) */
+.signCell svg {
+  opacity: 0.3;
+}
