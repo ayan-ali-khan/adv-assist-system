@@ -1,16 +1,30 @@
 import './App.css'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { CameraView, type CameraViewHandle, type ActiveMode } from './components/CameraView'
-import { ASLRecognizer } from './components/ASLRecognizer'
-import { SignDisplay } from './components/SignDisplay'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { AuthPage } from './components/AuthPage'
-import { LandingPage } from './components/LandingPage'
-import './components/landingpage.css'
 import { speak, stopSpeaking } from './lib/speech'
 import { useTheme } from './hooks/useTheme'
 import { useAuth } from './hooks/useAuth'
 import { useDetectionLogger } from './hooks/useDetectionLogger'
+import type { CameraViewHandle, ActiveMode } from './components/CameraView'
+import './components/landingpage.css'
+
+// ─── Lazy-loaded heavy components ─────────────────────────────────────────────
+const CameraView    = lazy(() => import('./components/CameraView').then(m => ({ default: m.CameraView })))
+const ASLRecognizer = lazy(() => import('./components/ASLRecognizer').then(m => ({ default: m.ASLRecognizer })))
+const SignDisplay   = lazy(() => import('./components/SignDisplay').then(m => ({ default: m.SignDisplay })))
+const AuthPage      = lazy(() => import('./components/AuthPage').then(m => ({ default: m.AuthPage })))
+const LandingPage   = lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })))
+
+function PageSpinner() {
+  return (
+    <div className="authPage">
+      <div className="authCard" style={{ alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
+        <div className="authLogoIcon" style={{ fontSize: 40 }}>👁</div>
+        <div style={{ marginTop: 16, opacity: 0.6 }}>Loading…</div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Feature button config ────────────────────────────────────────────────────
 type Feature = {
@@ -188,38 +202,35 @@ function App() {
 
   // ─── Loading splash ───────────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="authPage">
-        <div className="authCard" style={{ alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
-          <div className="authLogoIcon" style={{ fontSize: 40 }}>👁</div>
-          <div style={{ marginTop: 16, opacity: 0.6 }}>Loading…</div>
-        </div>
-      </div>
-    )
+    return <PageSpinner />
   }
 
   // ─── Landing page ─────────────────────────────────────────────────────────────
   if (page === 'landing') {
     return (
-      <LandingPage
-        user={user}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onGetStarted={() => setPage('auth')}
-        onGoToApp={() => setPage('app')}
-        onSignOut={handleSignOut}
-      />
+      <Suspense fallback={<PageSpinner />}>
+        <LandingPage
+          user={user}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onGetStarted={() => setPage('auth')}
+          onGoToApp={() => setPage('app')}
+          onSignOut={handleSignOut}
+        />
+      </Suspense>
     )
   }
 
   // ─── Auth page ────────────────────────────────────────────────────────────────
   if (page === 'auth' && !user) {
     return (
-      <AuthPage
-        onSignUpEmail={signUpEmail}
-        onSignInEmail={signInEmail}
-        onSignInGoogle={signInGoogle}
-      />
+      <Suspense fallback={<PageSpinner />}>
+        <AuthPage
+          onSignUpEmail={signUpEmail}
+          onSignInEmail={signInEmail}
+          onSignInGoogle={signInGoogle}
+        />
+      </Suspense>
     )
   }
 
@@ -232,10 +243,10 @@ function App() {
             <div className="titleIcon">
               {/* your icon SVG */}
             </div>
-            <span className="appTitle">Advance Assistance System</span>
+            <span className="appTitle">SAARTHI AI</span>
           </div>
           <div className="appSubtitle">
-            Face detection · Landmarks · Hand gesture · OCR · Currency · ASL
+            An AI-Powered Inclusive Support System for People with Disabilities
           </div>
         </div>
 
@@ -269,12 +280,14 @@ function App() {
         {/* ── Camera ── */}
         <section className="card cameraCard">
           <ErrorBoundary label="Camera" onError={(e) => setStatus(`Camera error: ${e.message}`)}>
-            <CameraView
-              ref={cameraRef}
-              isDetecting={cameraOn}
-              onStatus={controls.onStatus}
-              onSpeak={controls.onSpeak}
-            />
+            <Suspense fallback={<div className="cameraWrap" style={{minHeight:200,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.5}}>Loading camera…</div>}>
+              <CameraView
+                ref={cameraRef}
+                isDetecting={cameraOn}
+                onStatus={controls.onStatus}
+                onSpeak={controls.onSpeak}
+              />
+            </Suspense>
           </ErrorBoundary>
         </section>
 
@@ -364,7 +377,9 @@ function App() {
                 ? `Fingerspelling "${signDisplayText.slice(0, 20).toUpperCase()}":`
                 : 'Awaiting input…'}
             </div>
-            <SignDisplay text={signDisplayText} />
+            <Suspense fallback={null}>
+              <SignDisplay text={signDisplayText} />
+            </Suspense>
           </div>
 
           <div className="signSection">
@@ -387,15 +402,17 @@ function App() {
 
             {isASLEnabled && cameraRef.current?.getVideoRef() && (
               <ErrorBoundary label="ASL Recognizer" onError={(e) => setStatus(`ASL error: ${e.message}`)}>
-                <ASLRecognizer
-                  videoRef={cameraRef.current.getVideoRef()!}
-                  isEnabled={isASLEnabled}
-                  onRecognized={(letter) => {
-                    setAslRecognized((prev) => prev + letter)
-                    logDetection('asl', letter)
-                  }}
-                  onStatus={setStatus}
-                />
+                <Suspense fallback={<div style={{opacity:0.5,fontSize:13}}>Loading ASL…</div>}>
+                  <ASLRecognizer
+                    videoRef={cameraRef.current.getVideoRef()!}
+                    isEnabled={isASLEnabled}
+                    onRecognized={(letter) => {
+                      setAslRecognized((prev) => prev + letter)
+                      logDetection('asl', letter)
+                    }}
+                    onStatus={setStatus}
+                  />
+                </Suspense>
               </ErrorBoundary>
             )}
 

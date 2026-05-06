@@ -1,7 +1,7 @@
 {
-  "name": "Advance Assistance System",
-  "short_name": "Advance Assistance System",
-  "description": "AI-powered assistive app for impaired users",
+  "name": "SAARTHI AI",
+  "short_name": "SAARTHI AI",
+  "description": "SAARTHI AI – An AI-Powered Inclusive Support System for People with Disabilities",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

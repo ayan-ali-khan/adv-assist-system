@@ -1,3 +1,4 @@
+import './landingpage.css'
 import type { User } from 'firebase/auth'
 
 type Props = {
@@ -125,7 +126,7 @@ export function LandingPage({
       <nav className="aas-nav">
         <div className="aas-nav-brand">
           <div className="aas-nav-logo">👁</div>
-          <span className="aas-nav-name">Advance Assistance System</span>
+          <span className="aas-nav-name">SAARTHI AI</span>
         </div>
         <div className="aas-nav-right">
           {user && (
@@ -155,14 +156,15 @@ export function LandingPage({
         <div className="aas-hero-content">
           <div className="aas-hero-pill aas-fade-in">
             <span className="aas-hero-dot" />
-            AI-Powered · Runs in Browser · No Install
+            SAARTHI AI · Runs in Browser · No Install
           </div>
           <h1 className="aas-hero-h1 aas-fade-in aas-delay-1">
-            See the<br />world<br /><em>differently</em>
+            Inclusive AI<br />for <em>everyone</em>
           </h1>
           <p className="aas-hero-sub aas-fade-in aas-delay-2">
-            A real-time assistive platform combining face detection, hand gesture recognition,
-            OCR, currency identification, and ASL translation — all processing locally in your browser.
+            SAARTHI AI is an AI-powered inclusive support system for people with disabilities —
+            combining face detection, hand gesture recognition, OCR, currency identification,
+            and ASL translation, all running locally in your browser.
           </p>
           <div className="aas-hero-actions aas-fade-in aas-delay-3">
             {user ? (
@@ -282,7 +284,7 @@ export function LandingPage({
 
       {/* ── Footer ── */}
       <footer className="aas-footer">
-        <span>© 2026 Advance Assistance System</span>
+        <span>© 2026 SAARTHI AI</span>
         <div className="aas-footer-stack">
           {['MediaPipe', 'Roboflow', 'Firebase', 'React'].map((t) => (
             <div key={t} className="aas-footer-chip">{t}</div>

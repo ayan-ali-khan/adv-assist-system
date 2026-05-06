@@ -61,8 +61,8 @@ export function AuthPage({ onSignUpEmail, onSignInEmail, onSignInGoogle }: Props
         {/* Logo / title */}
         <div className="authLogo">
           <div className="authLogoIcon">👁</div>
-          <div className="authLogoTitle">Advance Assistance System</div>
-          <div className="authLogoSub">AI-powered assistive technology</div>
+          <div className="authLogoTitle">SAARTHI AI</div>
+          <div className="authLogoSub">An AI-Powered Inclusive Support System for People with Disabilities</div>
         </div>
 
         {/* Tab switcher */}
