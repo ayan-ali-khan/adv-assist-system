@@ -1,97 +1,134 @@
 import './App.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CameraView, type CameraViewHandle } from './components/CameraView'
+import { CameraView, type CameraViewHandle, type ActiveMode } from './components/CameraView'
 import { ASLRecognizer } from './components/ASLRecognizer'
 import { SignDisplay } from './components/SignDisplay'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { AuthPage } from './components/AuthPage'
+import { LandingPage } from './components/LandingPage'
+import './components/landingpage.css'
 import { speak, stopSpeaking } from './lib/speech'
 import { useTheme } from './hooks/useTheme'
+import { useAuth } from './hooks/useAuth'
+import { useDetectionLogger } from './hooks/useDetectionLogger'
 
+// ─── Feature button config ────────────────────────────────────────────────────
+type Feature = {
+  id: ActiveMode
+  label: string
+  activeLabel: string
+  description: string
+  oneShot?: boolean
+}
+
+const FEATURES: Feature[] = [
+  { id: 'faces',         label: 'Face Detector',   activeLabel: 'Stop Face Detect',  description: 'Detect faces and key points' },
+  { id: 'faceLandmarks', label: 'Face Landmarker', activeLabel: 'Stop Landmarker',   description: 'Map 468 facial landmarks' },
+  { id: 'gesture',       label: 'Hand Gesture',    activeLabel: 'Stop Gesture',      description: 'Recognize hand gestures and skeleton' },
+  { id: 'ocr',           label: 'Read Text',       activeLabel: 'Reading…',          description: 'OCR — read text from camera', oneShot: true },
+  { id: 'currency',      label: 'Currency Value',  activeLabel: 'Detecting…',        description: 'Identify Indian Rupee notes', oneShot: true },
+]
+
+type Page = 'landing' | 'auth' | 'app'
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
-  const [isDetecting, setIsDetecting]     = useState(false)
-  const [status, setStatus]               = useState<string>('Ready')
-  const [lastSpoken, setLastSpoken]       = useState<string>('')
-  const [voiceStatus, setVoiceStatus]     = useState<string>('Voice readying…')
-  const [signFromText, setSignFromText]   = useState<string>('')
+  const [cameraOn, setCameraOn]             = useState(false)
+  const [activeMode, setActiveMode]         = useState<ActiveMode>('idle')
+  const [status, setStatus]                 = useState<string>('Press Start to begin')
+  const [lastSpoken, setLastSpoken]         = useState<string>('')
+  const [voiceStatus, setVoiceStatus]       = useState<string>('Voice readying…')
+  const [signFromText, setSignFromText]     = useState<string>('')
   const [signFromSpeech, setSignFromSpeech] = useState<string>('')
-  const [isASLEnabled, setIsASLEnabled]   = useState(false)
-  const [aslRecognized, setAslRecognized] = useState<string>('')
-  const [isHandActive, setIsHandActive]   = useState(false)
-  const [installPrompt, setInstallPrompt] = useState<any>(null)
+  const [isASLEnabled, setIsASLEnabled]     = useState(false)
+  const [aslRecognized, setAslRecognized]   = useState<string>('')
+  const [installPrompt, setInstallPrompt]   = useState<any>(null)
   const [showInstallButton, setShowInstallButton] = useState(false)
-  const cameraRef = useRef<CameraViewHandle | null>(null)
+  const [page, setPage]                     = useState<Page>('landing')
+
+  const cameraRef    = useRef<CameraViewHandle | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const { theme, toggleTheme } = useTheme()
 
+  // ─── Auth + logging ──────────────────────────────────────────────────────────
+  const { user, loading, signUpEmail, signInEmail, signInGoogle, logOut } = useAuth()
+  const { startSession, endSession, logDetection, saveASLTranscript } =
+    useDetectionLogger(user)
+
+  // ─── Page routing based on auth state ────────────────────────────────────────
+  useEffect(() => {
+    if (loading) return
+    if (user) {
+      // Existing session → go straight to app
+      setPage((prev) => prev === 'landing' ? 'app' : prev)
+    } else {
+      // Logged out → back to landing
+      setPage('landing')
+    }
+  }, [user, loading])
+
+  // ─── onSpeak — log every spoken detection ────────────────────────────────────
   const controls = useMemo(
     () => ({
       onStatus: (s: string) => setStatus(s),
       onSpeak: (text: string) => {
         setLastSpoken(text)
         speak(text)
+        if (text.includes('rupee') || text.includes('currency'))
+          logDetection('currency', text)
+        else if (
+          text.includes('sign') || text.includes('hand') ||
+          text.includes('fist') || text.includes('palm') ||
+          text.includes('gesture')
+        )
+          logDetection('gesture', text)
+        else if (text.includes('face') || text.includes('landmark'))
+          logDetection('face', text)
+        else
+          logDetection('ocr', text)
       },
     }),
-    [],
+    [logDetection],
   )
 
-  // ─── Voice commands ──────────────────────────────────────────────────────────
+  // ─── Voice commands ───────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!user || page !== 'app') return
+
     const SR =
       (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition ||
-      (window as any).mozSpeechRecognition ||
-      (window as any).msSpeechRecognition
-    if (!SR) {
-      setVoiceStatus('Voice control not supported in this browser')
-      return
-    }
+      (window as any).webkitSpeechRecognition
+    if (!SR) { setVoiceStatus('Voice not supported'); return }
 
     const rec: any = new SR()
-    rec.continuous      = true
-    rec.interimResults  = false
-    rec.lang            = 'en-US'
+    rec.continuous     = true
+    rec.interimResults = false
+    rec.lang           = 'en-US'
 
-    rec.onstart = () => setVoiceStatus('Listening for: start, stop, read, describe, currency')
+    rec.onstart = () => setVoiceStatus('Listening…')
     rec.onerror = () => setVoiceStatus('Mic error — retrying…')
-    rec.onend   = () => {
-      try { rec.start() } catch { /* ignore */ }
-    }
+    rec.onend   = () => { try { rec.start() } catch { /* ignore */ } }
 
     rec.onresult = (event: any) => {
-      const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim()
-      setVoiceStatus(`Heard: "${transcript}"`)
+      const t = event.results[event.results.length - 1][0].transcript.toLowerCase().trim()
+      setVoiceStatus(`Heard: "${t}"`)
 
-      if (transcript.includes('start')) {
-        setIsDetecting(true)
-        speak('Starting detection')
-      } else if (transcript.includes('stop')) {
-        setIsDetecting(false)
-        stopSpeaking()
-        speak('Detection stopped')
-      } else if (transcript.includes('read text') || transcript.includes('read')) {
-        cameraRef.current?.readText()
-      } else if (transcript.includes('describe')) {
-        cameraRef.current?.describeScene()
-      } else if (transcript.includes('currency')) {
-        cameraRef.current?.detectCurrency()
-      } else if (transcript.includes('hand') || transcript.includes('gesture')) {
-        cameraRef.current?.handGesture()
-      } else {
-        // Any other phrase → show its sign representation
-        setSignFromSpeech(transcript)
-      }
+      if (t.includes('start'))                                        { handleStart(); speak('Camera started') }
+      else if (t.includes('stop'))                                    { stopAll(); speak('Stopped') }
+      else if (t.includes('face landmark') || t.includes('landmark')) toggleFeature('faceLandmarks')
+      else if (t.includes('face'))                                    toggleFeature('faces')
+      else if (t.includes('gesture') || t.includes('hand'))          toggleFeature('gesture')
+      else if (t.includes('read text') || t.includes('read'))        toggleFeature('ocr')
+      else if (t.includes('currency') || t.includes('money'))        toggleFeature('currency')
+      else setSignFromSpeech(t)
     }
 
     try { rec.start() } catch { /* ignore */ }
+    return () => { try { rec.onend = null; rec.stop() } catch { /* ignore */ } }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, cameraOn, user, page])
 
-    return () => {
-      try {
-        rec.onend = null
-        rec.stop()
-      } catch { /* ignore */ }
-    }
-  }, [isDetecting])
-
-  // ─── PWA install prompt ──────────────────────────────────────────────────────
+  // ─── PWA install ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault()
@@ -102,58 +139,139 @@ function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler as EventListener)
   }, [])
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
+  function toggleFeature(id: ActiveMode) {
+    if (!cameraOn) return
+    if (id === 'ocr')      { cameraRef.current?.readText(); return }
+    if (id === 'currency') { cameraRef.current?.detectCurrencyFromCamera(); return }
+    const next: ActiveMode = activeMode === id ? 'idle' : id
+    setActiveMode(next)
+    cameraRef.current?.setMode(next)
+  }
+
+  function handleUploadClick() { fileInputRef.current?.click() }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    await cameraRef.current?.detectCurrencyFromFile(file)
+  }
+
+  function handleStart() { setCameraOn(true); startSession() }
+
+  function stopAll() {
+    setCameraOn(false)
+    setActiveMode('idle')
+    setIsASLEnabled(false)
+    stopSpeaking()
+    cameraRef.current?.setMode('idle')
+    endSession()
+  }
+
+  function handleSignOut() {
+    stopAll()
+    logOut()
+    // page will be set to 'landing' by the useEffect above when user becomes null
+  }
+
   const handleInstall = async () => {
     if (!installPrompt) return
     ;(installPrompt as any).prompt()
     const { outcome } = await (installPrompt as any).userChoice
-    if (outcome === 'accepted') {
-      setShowInstallButton(false)
-      speak('App installed successfully')
-    }
+    if (outcome === 'accepted') { setShowInstallButton(false); speak('App installed') }
     setInstallPrompt(null)
   }
 
-  // Sign display text: prefer typed, fall back to captured speech
-  const signDisplayText = signFromText || signFromSpeech
+  const signDisplayText  = signFromText || signFromSpeech
+  const currencySelected = activeMode === 'currency'
 
+  // ─── Loading splash ───────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="authPage">
+        <div className="authCard" style={{ alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
+          <div className="authLogoIcon" style={{ fontSize: 40 }}>👁</div>
+          <div style={{ marginTop: 16, opacity: 0.6 }}>Loading…</div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Landing page ─────────────────────────────────────────────────────────────
+  if (page === 'landing') {
+    return (
+      <LandingPage
+        user={user}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onGetStarted={() => setPage('auth')}
+        onGoToApp={() => setPage('app')}
+        onSignOut={handleSignOut}
+      />
+    )
+  }
+
+  // ─── Auth page ────────────────────────────────────────────────────────────────
+  if (page === 'auth' && !user) {
+    return (
+      <AuthPage
+        onSignUpEmail={signUpEmail}
+        onSignInEmail={signInEmail}
+        onSignInGoogle={signInGoogle}
+      />
+    )
+  }
+
+  // ─── Main app ─────────────────────────────────────────────────────────────────
   return (
     <div className="appShell">
       <header className="appHeader">
         <div className="appHeaderLeft">
-          <div className="appTitle">Advance Assistance System</div>
+          <div className="titleRow">
+            <div className="titleIcon">
+              {/* your icon SVG */}
+            </div>
+            <span className="appTitle">Advance Assistance System</span>
+          </div>
           <div className="appSubtitle">
-            Object detection · OCR · Currency · Hand gesture · ASL recognition
+            Face detection · Landmarks · Hand gesture · OCR · Currency · ASL
           </div>
         </div>
+
         <div className="appHeaderRight">
-          <button
-            className="themeToggle"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            title="Toggle light/dark theme"
-          >
+          <button className="homeBtn" onClick={() => setPage('landing')}>
+            {/* home SVG */}
+            Home
+          </button>
+
+          <div className="authPill">
+            <span className="authName">{user?.displayName || user?.email}</span>
+            <div className="authDivider" />
+            <button className="authSignOut" onClick={handleSignOut}>Sign out</button>
+          </div>
+
+          <button className="iconBtn themeToggle" onClick={toggleTheme} aria-label="Toggle theme">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
+
           {showInstallButton && (
-            <button
-              className="installBtn"
-              onClick={handleInstall}
-              aria-label="Install app"
-              title="Install app to home screen"
-            >
-              📱 Install
+            <button className="installBtn" onClick={handleInstall}>
+              {/* download SVG */}
+              Install
             </button>
           )}
         </div>
       </header>
 
       <main className="appMain">
+
         {/* ── Camera ── */}
         <section className="card cameraCard">
           <ErrorBoundary label="Camera" onError={(e) => setStatus(`Camera error: ${e.message}`)}>
             <CameraView
               ref={cameraRef}
-              isDetecting={isDetecting}
+              isDetecting={cameraOn}
               onStatus={controls.onStatus}
               onSpeak={controls.onSpeak}
             />
@@ -166,66 +284,58 @@ function App() {
             <div className="statusLabel">Status</div>
             <div className="statusValue" aria-live="polite">{status}</div>
           </div>
-
           <div className="statusRow">
             <div className="statusLabel">Voice</div>
             <div className="statusValue" aria-live="polite">{voiceStatus}</div>
           </div>
 
           <div className="buttonRow">
-            <button className="btn" onClick={() => setIsDetecting(true)}  disabled={isDetecting}>Start</button>
-            <button className="btn" onClick={() => { setIsDetecting(false); stopSpeaking() }} disabled={!isDetecting}>Stop</button>
-          </div>
-
-          <div className="buttonRow">
-            <button
-              className="btn"
-              onClick={() => {
-                if (!isDetecting) setIsDetecting(true)
-                cameraRef.current?.readText()
-              }}
-            >
-              Read text
+            <button className="btn" onClick={handleStart} disabled={cameraOn}>
+              Start camera
             </button>
-            <button
-              className="btn"
-              onClick={() => {
-                if (!isDetecting) setIsDetecting(true)
-                cameraRef.current?.describeScene()
-              }}
-            >
-              Describe scene
+            <button className="btn" onClick={stopAll} disabled={!cameraOn}>
+              Stop all
             </button>
           </div>
 
-          <div className="buttonRow">
-            <button
-              className="btn"
-              onClick={() => {
-                if (!isDetecting) setIsDetecting(true)
-                cameraRef.current?.detectCurrency()
-              }}
-            >
-              Currency value
-            </button>
-            <button
-              className="btn"
-              onClick={() => {
-                if (!isDetecting) setIsDetecting(true)
-                cameraRef.current?.handGesture()
-                setIsHandActive((prev) => !prev)
-              }}
-              style={isHandActive ? { background: '#00e676', color: '#000', borderColor: '#00e676' } : {}}
-            >
-              {isHandActive ? 'Stop hand' : 'Hand gesture'}
-            </button>
+          <div className="featureGrid">
+            {FEATURES.map((f) => {
+              const isActive = activeMode === f.id
+              return (
+                <button
+                  key={f.id}
+                  className={`featureBtn${isActive ? ' featureBtn--active' : ''}`}
+                  onClick={() => toggleFeature(f.id)}
+                  disabled={!cameraOn}
+                  title={f.description}
+                >
+                  <span className="featureBtnLabel">
+                    {isActive && !f.oneShot ? f.activeLabel : f.label}
+                  </span>
+                  <span className="featureBtnDesc">{f.description}</span>
+                </button>
+              )
+            })}
           </div>
 
-          <div className="hint">
-            Tip: on mobile, allow camera permission and keep the phone steady for best results.
-          </div>
+          {currencySelected && (
+            <div className="currencyUploadRow">
+              <span className="currencyUploadLabel">Or detect from an image:</span>
+              <button className="btn uploadBtn" onClick={handleUploadClick} disabled={!cameraOn}>
+                📁 Upload image
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+                aria-label="Upload currency image"
+              />
+            </div>
+          )}
 
-          <div className="statusRow">
+          <div className="statusRow" style={{ marginTop: 4 }}>
             <div className="statusLabel">Last spoken</div>
             <div className="statusValue" aria-live="polite">{lastSpoken || '—'}</div>
           </div>
@@ -233,43 +343,37 @@ function App() {
 
         {/* ── Sign panel ── */}
         <section className="card signCard" aria-label="Sign language tools">
-
-          {/* Text → Sign */}
           <div className="signSection">
             <div className="signHeader">Text / speech → ASL fingerspelling</div>
-
             <div className="signRow">
               <input
                 className="signInput"
                 type="text"
-                placeholder="Type a phrase to fingerspell (A-Z)"
+                placeholder="Type a phrase to fingerspell (A–Z)"
                 onChange={(e) => setSignFromText(e.target.value)}
               />
             </div>
-
             {signFromSpeech && !signFromText && (
               <>
-                <div className="signLabel">From voice (last phrase that was not a command):</div>
+                <div className="signLabel">From voice:</div>
                 <div className="signSurface" aria-live="polite">{signFromSpeech}</div>
               </>
             )}
-
-            <div className="signLabel" style={{ marginTop: '10px' }}>
-              Fingerspelling {signDisplayText ? `"${signDisplayText.slice(0, 20).toUpperCase()}"` : '(awaiting input)'}:
+            <div className="signLabel" style={{ marginTop: 10 }}>
+              {signDisplayText
+                ? `Fingerspelling "${signDisplayText.slice(0, 20).toUpperCase()}":`
+                : 'Awaiting input…'}
             </div>
-
-            {/* ← SignDisplay replaces the plain char grid */}
             <SignDisplay text={signDisplayText} />
           </div>
 
-          {/* Camera → ASL text */}
           <div className="signSection">
-            <div className="signHeader">Camera → ASL recognition (A-Z)</div>
-            <div className="buttonRow" style={{ marginBottom: '12px' }}>
+            <div className="signHeader">Camera → ASL recognition (A–Z)</div>
+            <div className="buttonRow" style={{ marginBottom: 12 }}>
               <button
                 className="btn"
                 onClick={() => {
-                  if (!isASLEnabled && !isDetecting) setIsDetecting(true)
+                  if (!isASLEnabled && !cameraOn) { setCameraOn(true); startSession() }
                   setIsASLEnabled(!isASLEnabled)
                 }}
                 style={{
@@ -286,25 +390,29 @@ function App() {
                 <ASLRecognizer
                   videoRef={cameraRef.current.getVideoRef()!}
                   isEnabled={isASLEnabled}
-                  onRecognized={(letter) => setAslRecognized((prev) => prev + letter)}
-                  onStatus={(s) => setStatus(s)}
+                  onRecognized={(letter) => {
+                    setAslRecognized((prev) => prev + letter)
+                    logDetection('asl', letter)
+                  }}
+                  onStatus={setStatus}
                 />
               </ErrorBoundary>
             )}
 
             {aslRecognized && (
-              <div style={{ marginTop: '12px' }}>
+              <div style={{ marginTop: 12 }}>
                 <div className="signLabel">Recognized ASL text:</div>
                 <div className="signSurface">{aslRecognized}</div>
                 <button
                   className="btn"
                   onClick={() => {
+                    saveASLTranscript(aslRecognized)
                     setAslRecognized('')
-                    speak('ASL text cleared')
+                    speak('ASL text saved and cleared')
                   }}
-                  style={{ marginTop: '8px' }}
+                  style={{ marginTop: 8 }}
                 >
-                  Clear ASL text
+                  Save &amp; Clear
                 </button>
               </div>
             )}

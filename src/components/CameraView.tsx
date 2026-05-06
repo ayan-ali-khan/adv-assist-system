@@ -1,8 +1,23 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useCamera } from '../hooks/useCamera'
-import { useCocoSsd } from '../hooks/useCocoSsd'
 import { createWorker, PSM } from 'tesseract.js'
-import { GestureRecognizer, FilesetResolver, type GestureRecognizerResult } from '@mediapipe/tasks-vision'
+import {
+  FilesetResolver,
+  FaceDetector,
+  FaceLandmarker,
+  GestureRecognizer,
+  type FaceDetectorResult,
+  type FaceLandmarkerResult,
+  type GestureRecognizerResult,
+} from '@mediapipe/tasks-vision'
+import {
+  detectCurrencyFromBase64,
+  elementToBase64,
+  fileToBase64,
+} from '../lib/currencyDetection'
+import { detectASLFromFrame, type ASLResult } from '../lib/aslDetection'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type Props = {
   isDetecting: boolean
@@ -10,310 +25,440 @@ type Props = {
   onSpeak: (text: string) => void
 }
 
-type Detected = {
-  bbox: [number, number, number, number]
-  className: string
-  score: number
-}
-
-// Every connection in MediaPipe 21-landmark hand graph
-const HAND_CONNECTIONS: [number, number][] = [
-  [0, 1], [1, 2], [2, 3], [3, 4],       // thumb
-  [0, 5], [5, 6], [6, 7], [7, 8],       // index
-  [0, 9], [9, 10], [10, 11], [11, 12],  // middle
-  [0, 13], [13, 14], [14, 15], [15, 16], // ring
-  [0, 17], [17, 18], [18, 19], [19, 20], // pinky
-  [5, 9], [9, 13], [13, 17],            // palm cross-bar
-]
-
-// Active "mode" so COCO loop knows when to stand down
-type Mode = 'coco' | 'ocr' | 'currency' | 'hand' | 'idle'
+export type ActiveMode = 'idle' | 'faces' | 'faceLandmarks' | 'gesture' | 'ocr' | 'currency' | 'asl'
 
 export type CameraViewHandle = {
+  setMode: (mode: ActiveMode) => void
   readText: () => Promise<void>
-  describeScene: () => Promise<void>
-  detectCurrency: () => Promise<void>
-  handGesture: () => Promise<void>
+  detectCurrencyFromCamera: () => Promise<void>
+  detectCurrencyFromFile: (file: File) => Promise<void>
   getVideoRef: () => React.RefObject<HTMLVideoElement | null> | null
+  activeMode: ActiveMode
 }
+
+// MediaPipe hand skeleton connections (21 landmarks)
+const HAND_CONNECTIONS: [number, number][] = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [0, 9], [9, 10], [10, 11], [11, 12],
+  [0, 13], [13, 14], [14, 15], [15, 16],
+  [0, 17], [17, 18], [18, 19], [19, 20],
+  [5, 9], [9, 13], [13, 17],
+]
+
+// MediaPipe face mesh connections (subset — contours only for clarity)
+// Using the 468-landmark tesselation key edges
+const FACE_OVAL: [number, number][] = [
+  [10,338],[338,297],[297,332],[332,284],[284,251],[251,389],[389,356],
+  [356,454],[454,323],[323,361],[361,288],[288,397],[397,365],[365,379],
+  [379,378],[378,400],[400,377],[377,152],[152,148],[148,176],[176,149],
+  [149,150],[150,136],[136,172],[172,58],[58,132],[132,93],[93,234],
+  [234,127],[127,162],[162,21],[21,54],[54,103],[103,67],[67,109],[109,10],
+]
+const FACE_LEFT_EYE: [number, number][] = [
+  [33,7],[7,163],[163,144],[144,145],[145,153],[153,154],[154,155],
+  [155,133],[133,173],[173,157],[157,158],[158,159],[159,160],[160,161],[161,246],[246,33],
+]
+const FACE_RIGHT_EYE: [number, number][] = [
+  [362,382],[382,381],[381,380],[380,374],[374,373],[373,390],[390,249],
+  [249,263],[263,466],[466,388],[388,387],[387,386],[386,385],[385,384],[384,398],[398,362],
+]
+const FACE_LIPS: [number, number][] = [
+  [61,146],[146,91],[91,181],[181,84],[84,17],[17,314],[314,405],[405,321],
+  [321,375],[375,291],[291,61],
+  [78,95],[95,88],[88,178],[178,87],[87,14],[14,317],[317,402],[402,318],
+  [318,324],[324,308],[308,78],
+]
+const FACE_NOSE: [number, number][] = [
+  [168,6],[6,197],[197,195],[195,5],[5,4],[4,1],[1,19],[19,94],[94,2],
+]
+
+const GESTURE_LABELS: Record<string, string> = {
+  None:        'no specific gesture',
+  Closed_Fist: 'closed fist',
+  Open_Palm:   'open palm',
+  Pointing_Up: 'pointing up',
+  Thumb_Down:  'thumbs down',
+  Thumb_Up:    'thumbs up',
+  Victory:     'victory sign',
+  ILoveYou:    'I love you sign',
+}
+
+// CDN base for MediaPipe WASM
+const MP_WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export const CameraView = forwardRef<CameraViewHandle, Props>(function CameraView(
   { isDetecting, onStatus, onSpeak },
   ref,
 ) {
-  // Two separate canvases: one for COCO boxes, one for hand skeleton
-  const cocoCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const handCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const canvasRef   = useRef<HTMLCanvasElement | null>(null)
+  const camera      = useCamera(isDetecting)
 
-  const camera = useCamera(isDetecting)
-  const coco = useCocoSsd(isDetecting)
-  const lastAnnounceRef = useRef<number>(0)
-  const lastResultsRef = useRef<Detected[]>([])
-  const ocrWorkerRef = useRef<any>(null)
-  const isBusyRef = useRef(false)
-  const handDetectorRef = useRef<GestureRecognizer | null>(null)
-  const modeRef = useRef<Mode>('idle')
-  const lastGestureRef = useRef<string>('')
+  // Active mode — only one runs at a time
+  const [activeMode, setActiveModeState] = useState<ActiveMode>('idle')
+  const activeModeRef = useRef<ActiveMode>('idle')
 
-  const status = useMemo(() => {
-    if (!isDetecting) return 'Idle'
-    if (camera.error) return `Camera error: ${camera.error}`
-    if (coco.status === 'error') return `Model error: ${coco.error}`
-    if (coco.status === 'loading') return 'Loading model…'
-    if (!camera.isReady) return 'Starting camera…'
-    if (coco.status === 'ready') return 'Detecting…'
-    return 'Starting…'
-  }, [camera.error, camera.isReady, coco, isDetecting])
+  // Lazy-loaded model refs
+  const faceDetectorRef    = useRef<FaceDetector | null>(null)
+  const faceLandmarkerRef  = useRef<FaceLandmarker | null>(null)
+  const gestureRecogRef    = useRef<GestureRecognizer | null>(null)
+  const ocrWorkerRef       = useRef<any>(null)
+  const lastAnnounceRef    = useRef<number>(0)
+  const lastGestureRef     = useRef<string>('')
+  const isBusyRef          = useRef(false)
 
-  useEffect(() => onStatus(status), [onStatus, status])
-
-  // ─── Helper: sync a canvas size to the video ────────────────────────────────
-  function syncCanvas(canvas: HTMLCanvasElement, video: HTMLVideoElement) {
-    if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth
-    if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight
+  // Keep ref in sync with state
+  function setMode(mode: ActiveMode) {
+    activeModeRef.current = mode
+    setActiveModeState(mode)
   }
 
-  // ─── COCO-SSD render loop ────────────────────────────────────────────────────
+  // Report camera status
   useEffect(() => {
-    if (!isDetecting) return
+    if (!isDetecting) { onStatus('Idle'); return }
+    if (camera.error)  { onStatus(`Camera error: ${camera.error}`); return }
+    if (!camera.isReady) { onStatus('Starting camera…'); return }
+    if (activeMode === 'idle') onStatus('Camera ready — choose a feature below')
+  }, [isDetecting, camera.error, camera.isReady, activeMode, onStatus])
+
+  // Stop all loops when detection is turned off
+  useEffect(() => {
+    if (!isDetecting) setMode('idle')
+  }, [isDetecting])
+
+  // ─── Canvas sync helper ─────────────────────────────────────────────────────
+  function syncCanvas(video: HTMLVideoElement) {
+    const c = canvasRef.current
+    if (!c) return
+    if (c.width  !== video.videoWidth)  c.width  = video.videoWidth
+    if (c.height !== video.videoHeight) c.height = video.videoHeight
+  }
+
+  function clearCanvas() {
+    const c = canvasRef.current
+    if (!c) return
+    c.getContext('2d')?.clearRect(0, 0, c.width, c.height)
+  }
+
+  // ─── MediaPipe vision resolver (shared) ────────────────────────────────────
+  async function getVision() {
+    return FilesetResolver.forVisionTasks(MP_WASM)
+  }
+
+  // ─── Face Detection loop ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeMode !== 'faces') { clearCanvas(); return }
     if (!camera.isReady) return
-    if (coco.status !== 'ready') return
 
     const videoEl = camera.videoRef.current
-    const canvasEl = cocoCanvasRef.current
-    if (!videoEl || !canvasEl) return
-
-    const ctx = canvasEl.getContext('2d')
-    if (!ctx) return
+    if (!videoEl) return
 
     let cancelled = false
-    let raf = 0
-    let lastRun = 0
-    const minIntervalMs = 250
 
-    const render = async () => {
-      raf = requestAnimationFrame(render)
-      if (cancelled) return
+    async function startLoop() {
+      onStatus('Loading face detector…')
 
-      // Stand down entirely when another feature has the mic
-      if (modeRef.current !== 'coco' && modeRef.current !== 'idle') {
-        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height)
-        return
-      }
-
-      if (isBusyRef.current) return
-      if (!videoEl.videoWidth || !videoEl.videoHeight) return
-
-      syncCanvas(canvasEl, videoEl)
-
-      const now = performance.now()
-      if (now - lastRun < minIntervalMs) return
-      lastRun = now
-
-      const predictions = await coco.model.detect(videoEl)
-      if (cancelled) return
-
-      const results: Detected[] = predictions
-        .filter((p) => p.score >= 0.25)
-        .slice(0, 10)
-        .map((p) => ({
-          bbox: [p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]],
-          className: p.class,
-          score: p.score,
-        }))
-
-      lastResultsRef.current = results
-
-      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height)
-      ctx.lineWidth = 3
-      ctx.font = '16px system-ui'
-      ctx.textBaseline = 'top'
-
-      for (const r of results) {
-        const [x, y, w, h] = r.bbox
-        ctx.strokeStyle = '#ffffff'
-        ctx.strokeRect(x, y, w, h)
-        const label = `${r.className} ${(r.score * 100).toFixed(0)}%`
-        const pad = 6
-        const tw = ctx.measureText(label).width
-        ctx.fillStyle = 'rgba(0,0,0,0.75)'
-        ctx.fillRect(x, y, tw + pad * 2, 22)
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(label, x + pad, y + 3)
-      }
-
-      const announceEveryMs = 10_000
-      if (results.length > 0 && Date.now() - lastAnnounceRef.current > announceEveryMs) {
-        lastAnnounceRef.current = Date.now()
-        const unique = [...new Set(results.slice(0, 5).map((r) => r.className))]
-        onSpeak(`I can see ${unique.join(', ')}`)
-      }
-    }
-
-    modeRef.current = 'coco'
-    raf = requestAnimationFrame(render)
-
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(raf)
-      modeRef.current = 'idle'
-      const c = cocoCanvasRef.current
-      if (c) {
-        const clear = c.getContext('2d')
-        if (clear) clear.clearRect(0, 0, c.width, c.height)
-      }
-      lastResultsRef.current = []
-    }
-  }, [camera.isReady, camera.videoRef, coco, isDetecting, onSpeak])
-
-  // ─── Frame grabber (for OCR / currency) ─────────────────────────────────────
-  async function grabFrameAsCanvas() {
-    const videoEl = camera.videoRef.current
-    if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
-      throw new Error('Camera not ready')
-    }
-    const scale = 1.5
-    const off = document.createElement('canvas')
-    off.width = Math.floor(videoEl.videoWidth * scale)
-    off.height = Math.floor(videoEl.videoHeight * scale)
-    const ctx = off.getContext('2d')
-    if (!ctx) throw new Error('Canvas not supported')
-    ctx.imageSmoothingEnabled = true
-    ctx.filter = 'grayscale(1) contrast(1.35) brightness(1.05)'
-    ctx.drawImage(videoEl, 0, 0, off.width, off.height)
-    return off
-  }
-
-  // ─── Shared OCR worker init ──────────────────────────────────────────────────
-  async function ensureOcrWorker() {
-    if (ocrWorkerRef.current) return
-    onStatus('Initializing OCR…')
-    const worker = await createWorker(['eng', 'hin'], 1, {
-      logger: (m: any) => {
-        if (typeof m?.progress === 'number' && m.status) {
-          onStatus(`${m.status} ${(m.progress * 100).toFixed(0)}%`)
-        }
-      },
-    })
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.AUTO,
-      preserve_interword_spaces: '1',
-    })
-    ocrWorkerRef.current = worker
-  }
-
-  // ─── Read Text ───────────────────────────────────────────────────────────────
-  async function handleReadText() {
-    await runExclusive('ocr', async () => {
-      try {
-        await ensureOcrWorker()
-        const canvas = await grabFrameAsCanvas()
-        onStatus('Reading text…')
-        const { data } = await ocrWorkerRef.current.recognize(canvas)
-        const text = data.text?.replace(/\s+/g, ' ').trim()
-        if (text && text.length > 3) {
-          onSpeak(text.slice(0, 300))
-          onStatus('Text read')
-        } else {
-          onSpeak('No readable text found')
-          onStatus('No text found')
-        }
-      } catch (e) {
-        console.error(e)
-        onSpeak('Could not read text')
-        onStatus(e instanceof Error ? e.message : 'Text read error')
-      }
-    })
-  }
-
-  // ─── Describe Scene ──────────────────────────────────────────────────────────
-  async function handleDescribeScene() {
-    await runExclusive('idle', async () => {
-      const items = lastResultsRef.current
-      if (!items.length) {
-        onSpeak('No objects detected right now')
-        return
-      }
-      const top = [...new Set(items.map((r) => r.className))].slice(0, 6)
-      const sentence =
-        top.length === 1
-          ? `I can see a ${top[0]}.`
-          : `I can see ${top.slice(0, -1).join(', ')} and ${top[top.length - 1]}.`
-      onSpeak(sentence)
-    })
-  }
-
-  // ─── Currency Detection ──────────────────────────────────────────────────────
-  async function handleDetectCurrency() {
-    await runExclusive('currency', async () => {
-      try {
-        onStatus('Looking for currency…')
-        await ensureOcrWorker()
-        const canvas = await grabFrameAsCanvas()
-        const { data } = await ocrWorkerRef.current.recognize(canvas)
-        const raw = (data.text ?? '').toLowerCase()
-        const normalized = raw.replace(/[\s\n\r]+/g, ' ')
-
-        type Candidate = { note: string; patterns: RegExp[] }
-        const candidates: Candidate[] = [
-          { note: '10',   patterns: [/₹\s*10\b/, /\b10\b(?!\d)/, /\bten\b/] },
-          { note: '20',   patterns: [/₹\s*20\b/, /\b20\b(?!\d)/, /\btwenty\b/] },
-          { note: '50',   patterns: [/₹\s*50\b/, /\b50\b(?!\d)/, /\bfifty\b/] },
-          { note: '100',  patterns: [/₹\s*100\b/, /\b100\b(?!\d)/, /\bhundred\b/, /\bone hundred\b/] },
-          { note: '200',  patterns: [/₹\s*200\b/, /\b200\b(?!\d)/] },
-          { note: '500',  patterns: [/₹\s*500\b/, /\b500\b(?!\d)/, /\bfive hundred\b/] },
-          { note: '2000', patterns: [/₹\s*2000\b/, /\b2000\b(?!\d)/, /\btwo thousand\b/] },
-        ]
-
-        const scores = candidates.map((c) => {
-          let score = 0
-          for (const re of c.patterns) {
-            if (re.test(normalized)) score += 1
-            const all = normalized.match(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'))
-            if (all && all.length > 1) score += all.length - 1
-          }
-          return { note: c.note, score }
+      if (!faceDetectorRef.current) {
+        const vision = await getVision()
+        faceDetectorRef.current = await FaceDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          minDetectionConfidence: 0.5,
         })
-
-        const best = scores.reduce(
-          (acc, cur) => (cur.score > acc.score ? cur : acc),
-          { note: '', score: 0 } as { note: string; score: number },
-        )
-
-        if (best.score >= 2 && best.note) {
-          onSpeak(`This looks like a ${best.note} rupee note.`)
-          onStatus(`Detected possible ₹${best.note} note`)
-        } else {
-          onSpeak('I am not confident about the currency value. Please move the note closer and try again.')
-          onStatus('Currency not confidently recognised')
-        }
-      } catch (e) {
-        onSpeak('Currency detection failed')
-        onStatus(e instanceof Error ? e.message : 'Currency detection error')
       }
-    })
-  }
 
-  // ─── Hand Gesture ────────────────────────────────────────────────────────────
-  async function handleHandGesture() {
-    // If already running, stop it
-    if (modeRef.current === 'hand') {
-      modeRef.current = 'coco'
-      onStatus('Hand detection stopped')
-      return
+      onStatus('Detecting faces…')
+
+      const loop = () => {
+        if (cancelled || activeModeRef.current !== 'faces') { clearCanvas(); return }
+        if (!videoEl!.videoWidth || !videoEl!.videoHeight) { requestAnimationFrame(loop); return }
+
+        syncCanvas(videoEl!)
+        const canvas = canvasRef.current!
+        const ctx    = canvas.getContext('2d')!
+        const W = canvas.width
+        const H = canvas.height
+
+        let result: FaceDetectorResult
+        try {
+          result = faceDetectorRef.current!.detectForVideo(videoEl!, performance.now())
+        } catch {
+          requestAnimationFrame(loop)
+          return
+        }
+
+        ctx.clearRect(0, 0, W, H)
+
+        for (const det of result.detections) {
+          const bb = det.boundingBox
+          if (!bb) continue
+          const { originX: x, originY: y, width: w, height: h } = bb
+
+          // Bounding box
+          ctx.strokeStyle = '#00e5ff'
+          ctx.lineWidth   = 2.5
+          ctx.strokeRect(x, y, w, h)
+
+          // Confidence label
+          const score = det.categories[0]?.score ?? 0
+          const label = `Face ${(score * 100).toFixed(0)}%`
+          ctx.font         = '14px system-ui'
+          ctx.textBaseline = 'top'
+          const pad = 5
+          const tw  = ctx.measureText(label).width
+          ctx.fillStyle = 'rgba(0,0,0,0.7)'
+          ctx.fillRect(x, y - 22, tw + pad * 2, 20)
+          ctx.fillStyle = '#00e5ff'
+          ctx.fillText(label, x + pad, y - 20)
+
+          // Key points (eyes, nose, mouth corners)
+          if (det.keypoints) {
+            for (const kp of det.keypoints) {
+              ctx.beginPath()
+              ctx.arc(kp.x * W, kp.y * H, 4, 0, 2 * Math.PI)
+              ctx.fillStyle = '#ff1744'
+              ctx.fill()
+            }
+          }
+        }
+
+        // Announce
+        const count = result.detections.length
+        if (count > 0 && Date.now() - lastAnnounceRef.current > 6000) {
+          lastAnnounceRef.current = Date.now()
+          onSpeak(count === 1 ? 'I can see one face' : `I can see ${count} faces`)
+        } else if (count === 0) {
+          onStatus('No face detected')
+        } else {
+          onStatus(`${count} face${count > 1 ? 's' : ''} detected`)
+        }
+
+        requestAnimationFrame(loop)
+      }
+
+      requestAnimationFrame(loop)
     }
 
-    // Don't start if another exclusive task is running
-    if (isBusyRef.current) return
+    startLoop().catch((e) => onStatus(e instanceof Error ? e.message : 'Face detection error'))
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, camera.isReady])
 
-    try {
+  // ─── ASL Detection loop ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeMode !== 'asl') { clearCanvas(); return }
+    if (!camera.isReady) return
+
+    const videoEl = camera.videoRef.current
+    if (!videoEl) return
+
+    let cancelled    = false
+    let isProcessing = false
+
+    onStatus('ASL detection active — show a hand sign')
+
+    const loop = async () => {
+      if (cancelled || activeModeRef.current !== 'asl') { clearCanvas(); return }
+
+      if (!isProcessing && videoEl.videoWidth && videoEl.videoHeight) {
+        isProcessing = true
+        try {
+          const result: ASLResult = await detectASLFromFrame(videoEl)
+          if (cancelled || activeModeRef.current !== 'asl') return
+
+          // ── Draw bounding boxes ──────────────────────────────────────────
+          syncCanvas(videoEl)
+          const canvas = canvasRef.current!
+          const ctx    = canvas.getContext('2d')!
+          const W = canvas.width
+          const H = canvas.height
+          ctx.clearRect(0, 0, W, H)
+
+          for (const pred of result.predictions) {
+            // Roboflow coords are center-based → convert to top-left
+            const x = pred.x - pred.width  / 2
+            const y = pred.y - pred.height / 2
+            const w = pred.width
+            const h = pred.height
+
+            // Box
+            ctx.strokeStyle = '#FFD600'
+            ctx.lineWidth   = 2.5
+            ctx.strokeRect(x, y, w, h)
+
+            // Label background + text
+            const label = `${pred.letter}  ${(pred.confidence * 100).toFixed(0)}%`
+            ctx.font         = 'bold 18px system-ui'
+            ctx.textBaseline = 'bottom'
+            const tw = ctx.measureText(label).width
+            ctx.fillStyle = 'rgba(0,0,0,0.75)'
+            ctx.fillRect(x, y - 26, tw + 12, 26)
+            ctx.fillStyle = '#FFD600'
+            ctx.fillText(label, x + 6, y - 4)
+          }
+
+          // ── Status + voice announce ──────────────────────────────────────
+          if (result.best) {
+            const { letter, confidence } = result.best
+            onStatus(`ASL: ${letter}  (${(confidence * 100).toFixed(0)}%)`)
+
+            const now = Date.now()
+            if (
+              now - lastAnnounceRef.current > 2000 ||
+              letter !== lastGestureRef.current
+            ) {
+              lastAnnounceRef.current = now
+              lastGestureRef.current  = letter
+              onSpeak(`Letter ${letter}`)
+            }
+          } else {
+            onStatus('No ASL sign detected — show a hand sign')
+            clearCanvas()
+          }
+        } catch (e) {
+          if (!cancelled) onStatus(e instanceof Error ? e.message : 'ASL API error')
+        } finally {
+          isProcessing = false
+        }
+      }
+
+      // ~4 fps — avoids hammering the Roboflow API
+      if (!cancelled) setTimeout(() => { if (!cancelled) loop() }, 250)
+    }
+
+    loop()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, camera.isReady])
+
+  // ─── Face Landmarker loop ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeMode !== 'faceLandmarks') { clearCanvas(); return }
+    if (!camera.isReady) return
+
+    const videoEl = camera.videoRef.current
+    if (!videoEl) return
+
+    let cancelled = false
+
+    async function startLoop() {
+      onStatus('Loading face landmarker…')
+
+      if (!faceLandmarkerRef.current) {
+        const vision = await getVision()
+        faceLandmarkerRef.current = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numFaces: 4,
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false,
+        })
+      }
+
+      onStatus('Mapping face landmarks…')
+
+      // Helper: draw a set of connections on the canvas
+      function drawConnections(
+        ctx: CanvasRenderingContext2D,
+        lms: { x: number; y: number }[],
+        connections: [number, number][],
+        W: number,
+        H: number,
+        color: string,
+      ) {
+        ctx.strokeStyle = color
+        ctx.lineWidth   = 1.2
+        for (const [i, j] of connections) {
+          const a = lms[i], b = lms[j]
+          if (!a || !b) continue
+          ctx.beginPath()
+          ctx.moveTo(a.x * W, a.y * H)
+          ctx.lineTo(b.x * W, b.y * H)
+          ctx.stroke()
+        }
+      }
+
+      const loop = () => {
+        if (cancelled || activeModeRef.current !== 'faceLandmarks') { clearCanvas(); return }
+        if (!videoEl!.videoWidth || !videoEl!.videoHeight) { requestAnimationFrame(loop); return }
+
+        syncCanvas(videoEl!)
+        const canvas = canvasRef.current!
+        const ctx    = canvas.getContext('2d')!
+        const W = canvas.width
+        const H = canvas.height
+
+        let result: FaceLandmarkerResult
+        try {
+          result = faceLandmarkerRef.current!.detectForVideo(videoEl!, performance.now())
+        } catch {
+          requestAnimationFrame(loop)
+          return
+        }
+
+        ctx.clearRect(0, 0, W, H)
+
+        for (const face of result.faceLandmarks) {
+          // Draw mesh contours
+          drawConnections(ctx, face, FACE_OVAL,      W, H, '#00e5ff')
+          drawConnections(ctx, face, FACE_LEFT_EYE,  W, H, '#69ff47')
+          drawConnections(ctx, face, FACE_RIGHT_EYE, W, H, '#69ff47')
+          drawConnections(ctx, face, FACE_LIPS,      W, H, '#ff6d00')
+          drawConnections(ctx, face, FACE_NOSE,      W, H, '#e040fb')
+
+          // Landmark dots (sparse — every 4th point to avoid clutter)
+          ctx.fillStyle = 'rgba(255,255,255,0.55)'
+          for (let i = 0; i < face.length; i += 4) {
+            const p = face[i]
+            ctx.beginPath()
+            ctx.arc(p.x * W, p.y * H, 1.5, 0, 2 * Math.PI)
+            ctx.fill()
+          }
+        }
+
+        const count = result.faceLandmarks.length
+        if (count > 0) {
+          onStatus(`${count} face${count > 1 ? 's' : ''} — landmarks mapped`)
+        } else {
+          onStatus('No face detected — look at the camera')
+        }
+
+        requestAnimationFrame(loop)
+      }
+
+      requestAnimationFrame(loop)
+    }
+
+    startLoop().catch((e) => onStatus(e instanceof Error ? e.message : 'Face landmarker error'))
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, camera.isReady])
+
+  // ─── Gesture / Hand skeleton loop ──────────────────────────────────────────
+  useEffect(() => {
+    if (activeMode !== 'gesture') { clearCanvas(); return }
+    if (!camera.isReady) return
+
+    const videoEl = camera.videoRef.current
+    if (!videoEl) return
+
+    let cancelled = false
+
+    async function startLoop() {
       onStatus('Loading gesture model…')
 
-      if (!handDetectorRef.current) {
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-        )
-        handDetectorRef.current = await GestureRecognizer.createFromOptions(vision, {
+      if (!gestureRecogRef.current) {
+        const vision = await getVision()
+        gestureRecogRef.current = await GestureRecognizer.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
               'https://storage.googleapis.com/mediapipe-tasks/gesture_recognizer/gesture_recognizer.task',
@@ -324,59 +469,37 @@ export const CameraView = forwardRef<CameraViewHandle, Props>(function CameraVie
         })
       }
 
-      const videoEl = camera.videoRef.current
-      if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
-        throw new Error('Camera not ready')
-      }
+      onStatus('Show your hand to the camera')
 
-      const handCanvas = handCanvasRef.current
-      if (!handCanvas) throw new Error('Hand canvas not ready')
-
-      const ctx = handCanvas.getContext('2d')
-      if (!ctx) throw new Error('Canvas context unavailable')
-
-      // Switch mode — COCO loop will clear its canvas and stand down
-      modeRef.current = 'hand'
-      onStatus('Hand detection active — show your hand')
-      onSpeak('Hand gesture detection started')
-
-      const GESTURE_LABELS: Record<string, string> = {
-        None:        'no specific gesture',
-        Closed_Fist: 'closed fist',
-        Open_Palm:   'open palm',
-        Pointing_Up: 'pointing up',
-        Thumb_Down:  'thumbs down',
-        Thumb_Up:    'thumbs up',
-        Victory:     'victory sign',
-        ILoveYou:    'I love you sign',
-      }
-
-      // ── Continuous rAF loop — runs until mode changes ──────────────
-      const runLoop = () => {
-        if (modeRef.current !== 'hand') {
-          ctx.clearRect(0, 0, handCanvas.width, handCanvas.height)
+      const loop = () => {
+        if (cancelled || activeModeRef.current !== 'gesture') {
+          clearCanvas()
           return
         }
 
-        // Sync canvas to video every frame
-        if (handCanvas.width  !== videoEl.videoWidth)  handCanvas.width  = videoEl.videoWidth
-        if (handCanvas.height !== videoEl.videoHeight) handCanvas.height = videoEl.videoHeight
+        if (!videoEl!.videoWidth || !videoEl!.videoHeight) {
+          requestAnimationFrame(loop)
+          return
+        }
 
-        const W = handCanvas.width
-        const H = handCanvas.height
+        syncCanvas(videoEl!)
+        const canvas = canvasRef.current!
+        const ctx    = canvas.getContext('2d')!
+        const W = canvas.width
+        const H = canvas.height
 
         let result: GestureRecognizerResult
         try {
-          result = handDetectorRef.current!.recognizeForVideo(videoEl, performance.now())
+          result = gestureRecogRef.current!.recognizeForVideo(videoEl!, performance.now())
         } catch {
-          requestAnimationFrame(runLoop)
+          requestAnimationFrame(loop)
           return
         }
 
         ctx.clearRect(0, 0, W, H)
 
         for (const handLandmarks of result.landmarks) {
-          // Draw connections first (underneath dots)
+          // Connections
           ctx.strokeStyle = '#00e676'
           ctx.lineWidth   = 2.5
           for (const [i, j] of HAND_CONNECTIONS) {
@@ -388,96 +511,208 @@ export const CameraView = forwardRef<CameraViewHandle, Props>(function CameraVie
             ctx.lineTo(b.x * W, b.y * H)
             ctx.stroke()
           }
-
-          // Draw landmark dots on top
+          // Dots
           for (const p of handLandmarks) {
             ctx.beginPath()
             ctx.arc(p.x * W, p.y * H, 5, 0, 2 * Math.PI)
             ctx.fillStyle   = '#ff1744'
             ctx.fill()
-            ctx.strokeStyle = '#ffffff'
+            ctx.strokeStyle = '#fff'
             ctx.lineWidth   = 1.5
             ctx.stroke()
           }
         }
 
-        // Announce gesture (throttled)
         if (result.gestures.length > 0) {
-          const topGesture = result.gestures[0][0]
-          const side       = result.handedness[0]?.[0]?.categoryName ?? ''
-          const label      = GESTURE_LABELS[topGesture.categoryName] ?? topGesture.categoryName
-          const statusText = `${side} hand: ${label} (${(topGesture.score * 100).toFixed(0)}%)`
-          onStatus(`Gesture: ${statusText}`)
+          const top    = result.gestures[0][0]
+          const side   = result.handedness[0]?.[0]?.categoryName ?? ''
+          const label  = GESTURE_LABELS[top.categoryName] ?? top.categoryName
+          const text   = `${side} hand: ${label} (${(top.score * 100).toFixed(0)}%)`
+          onStatus(`Gesture: ${text}`)
 
-          const nowMs = Date.now()
-          if (
-            nowMs - lastAnnounceRef.current > 2000 ||
-            topGesture.categoryName !== lastGestureRef.current
-          ) {
-            lastAnnounceRef.current = nowMs
-            lastGestureRef.current  = topGesture.categoryName
-            onSpeak(statusText)
+          const now = Date.now()
+          if (now - lastAnnounceRef.current > 2000 || top.categoryName !== lastGestureRef.current) {
+            lastAnnounceRef.current = now
+            lastGestureRef.current  = top.categoryName
+            onSpeak(text)
           }
         } else {
-          onStatus('No hand in frame — show your hand')
+          onStatus('No hand detected — show your hand')
         }
 
-        requestAnimationFrame(runLoop)
+        requestAnimationFrame(loop)
       }
 
-      requestAnimationFrame(runLoop)
-
-    } catch (e) {
-      modeRef.current = 'coco'
-      onSpeak('Hand gesture detection failed')
-      onStatus(e instanceof Error ? e.message : 'Gesture error')
+      requestAnimationFrame(loop)
     }
+
+    startLoop().catch((e) => {
+      onStatus(e instanceof Error ? e.message : 'Gesture detection error')
+    })
+
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, camera.isReady])
+
+  // ─── Frame grabber (OCR / currency) ────────────────────────────────────────
+  async function grabFrame() {
+    const videoEl = camera.videoRef.current
+    if (!videoEl || !videoEl.videoWidth) throw new Error('Camera not ready')
+    const scale = 1.5
+    const off   = document.createElement('canvas')
+    off.width   = Math.floor(videoEl.videoWidth  * scale)
+    off.height  = Math.floor(videoEl.videoHeight * scale)
+    const ctx   = off.getContext('2d')!
+    ctx.imageSmoothingEnabled = true
+    ctx.filter = 'grayscale(1) contrast(1.35) brightness(1.05)'
+    ctx.drawImage(videoEl, 0, 0, off.width, off.height)
+    return off
   }
 
-  // ─── Exclusive task runner (OCR / currency only — not hand) ─────────────────
-  async function runExclusive(mode: Mode, task: () => Promise<void>) {
+  async function ensureOcr() {
+    if (ocrWorkerRef.current) return
+    onStatus('Initializing OCR…')
+    const w = await createWorker(['eng', 'hin'], 1, {
+      logger: (m: any) => {
+        if (typeof m?.progress === 'number' && m.status)
+          onStatus(`${m.status} ${(m.progress * 100).toFixed(0)}%`)
+      },
+    })
+    await w.setParameters({ tessedit_pageseg_mode: PSM.AUTO, preserve_interword_spaces: '1' })
+    ocrWorkerRef.current = w
+  }
+
+  // ─── Read Text (one-shot) ───────────────────────────────────────────────────
+  async function handleReadText() {
     if (isBusyRef.current) return
     isBusyRef.current = true
-    const prevMode = modeRef.current
-    modeRef.current = mode
     try {
-      await task()
+      await ensureOcr()
+      const frame = await grabFrame()
+      onStatus('Reading text…')
+      const { data } = await ocrWorkerRef.current.recognize(frame)
+      const text = data.text?.replace(/\s+/g, ' ').trim()
+      if (text && text.length > 3) {
+        onSpeak(text.slice(0, 300))
+        onStatus('Text read')
+      } else {
+        onSpeak('No readable text found')
+        onStatus('No text found')
+      }
+    } catch (e) {
+      onSpeak('Could not read text')
+      onStatus(e instanceof Error ? e.message : 'OCR error')
     } finally {
       isBusyRef.current = false
-      modeRef.current = prevMode
     }
   }
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      readText: handleReadText,
-      describeScene: handleDescribeScene,
-      detectCurrency: handleDetectCurrency,
-      handGesture: handleHandGesture,
-      getVideoRef: () => camera.videoRef,
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [camera.videoRef],
-  )
+  // ─── Currency Detection via Roboflow API ───────────────────────────────────
+  // Shared result renderer — draws boxes on canvas and speaks the result
+  async function runCurrencyDetection(base64: string) {
+    onStatus('Sending to Roboflow…')
+    const result = await detectCurrencyFromBase64(base64)
 
+    if (!result.best || result.predictions.length === 0) {
+      onSpeak('No currency note detected. Hold the note flat and well-lit.')
+      onStatus('No currency detected')
+      return
+    }
+
+    // Draw bounding boxes on the canvas
+    const videoEl = camera.videoRef.current
+    const canvas  = canvasRef.current
+    if (canvas && videoEl) {
+      syncCanvas(videoEl)
+      const ctx = canvas.getContext('2d')!
+      const W   = canvas.width
+      const H   = canvas.height
+      ctx.clearRect(0, 0, W, H)
+
+      for (const pred of result.predictions) {
+        // Roboflow returns center x/y + width/height
+        const x = pred.x - pred.width  / 2
+        const y = pred.y - pred.height / 2
+        const w = pred.width
+        const h = pred.height
+
+        ctx.strokeStyle = '#ffd600'
+        ctx.lineWidth   = 3
+        ctx.strokeRect(x, y, w, h)
+
+        const label = `${pred.class.replace('_', ' ')} ${(pred.confidence * 100).toFixed(0)}%`
+        ctx.font         = '15px system-ui'
+        ctx.textBaseline = 'top'
+        const pad = 5
+        const tw  = ctx.measureText(label).width
+        ctx.fillStyle = 'rgba(0,0,0,0.75)'
+        ctx.fillRect(x, y, tw + pad * 2, 22)
+        ctx.fillStyle = '#ffd600'
+        ctx.fillText(label, x + pad, y + 3)
+      }
+    }
+
+    const denom = result.denomination
+    const conf  = ((result.best.confidence) * 100).toFixed(0)
+    const text  = denom
+      ? `This is a ${denom} rupee note (${conf}% confidence)`
+      : `Detected: ${result.best.class.replace(/_/g, ' ')} (${conf}%)`
+
+    onSpeak(text)
+    onStatus(text)
+  }
+
+  async function handleDetectCurrencyFromCamera() {
+    if (isBusyRef.current) return
+    isBusyRef.current = true
+    try {
+      const videoEl = camera.videoRef.current
+      if (!videoEl || !videoEl.videoWidth) throw new Error('Camera not ready')
+      const base64 = elementToBase64(videoEl)
+      await runCurrencyDetection(base64)
+    } catch (e) {
+      onSpeak('Currency detection failed')
+      onStatus(e instanceof Error ? e.message : 'Currency error')
+    } finally {
+      isBusyRef.current = false
+    }
+  }
+
+  async function handleDetectCurrencyFromFile(file: File) {
+    if (isBusyRef.current) return
+    isBusyRef.current = true
+    try {
+      onStatus('Reading uploaded image…')
+      const base64 = await fileToBase64(file)
+      await runCurrencyDetection(base64)
+    } catch (e) {
+      onSpeak('Currency detection failed')
+      onStatus(e instanceof Error ? e.message : 'Currency error')
+    } finally {
+      isBusyRef.current = false
+    }
+  }
+
+  // ─── Imperative handle ──────────────────────────────────────────────────────
+  useImperativeHandle(ref, () => ({
+    setMode,
+    readText: handleReadText,
+    detectCurrencyFromCamera: handleDetectCurrencyFromCamera,
+    detectCurrencyFromFile:   handleDetectCurrencyFromFile,
+    getVideoRef: () => camera.videoRef,
+    get activeMode() { return activeModeRef.current },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [camera.videoRef])
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="cameraWrap">
       <div className="cameraStage" role="group" aria-label="Camera preview">
         <video ref={camera.videoRef} className="cameraVideo" autoPlay muted playsInline />
-        {/* COCO-SSD overlay — always present, cleared when hand mode active */}
-        <canvas ref={cocoCanvasRef} className="cameraOverlay" />
-        {/* Hand skeleton overlay — separate layer, drawn only during hand detection */}
-        <canvas ref={handCanvasRef} className="cameraOverlay cameraOverlayHand" />
+        <canvas ref={canvasRef} className="cameraOverlay" />
       </div>
-
       <div className="cameraFooter">
-        <div className="cameraFooterLabel">Detected objects are outlined in white.</div>
-        {!isDetecting ? null : camera.error ? (
-          <div className="errorText">{camera.error}</div>
-        ) : coco.status === 'error' ? (
-          <div className="errorText">{coco.error}</div>
-        ) : null}
+        {camera.error && <div className="errorText">{camera.error}</div>}
       </div>
     </div>
   )
