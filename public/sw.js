@@ -1,4 +1,3 @@
-// Simple service worker for PWA
 const CACHE_NAME = 'saarthi-ai-v1'
 
 // URLs that must never be intercepted by the SW
@@ -42,14 +41,40 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event
+  const url = new URL(request.url)
 
-  // Never intercept non-GET requests or external API calls
+  // Never intercept non-GET or external API calls
   if (request.method !== 'GET' || shouldPassthrough(request.url)) {
     event.respondWith(fetch(request))
     return
   }
 
+  // For HTML navigation — network first, fallback to cache
+  // This prevents blank screen on first load
+  if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          const clone = res.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+          return res
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
+    )
+    return
+  }
+
+  // For JS/CSS/assets — cache first, then network, then cache the response
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request))
+    caches.match(request).then((cached) => {
+      if (cached) return cached
+      return fetch(request).then((res) => {
+        if (res.ok) {
+          const clone = res.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+        }
+        return res
+      })
+    })
   )
 })

@@ -2,9 +2,6 @@ const API_KEY = import.meta.env.VITE_ROBOFLOW_API_KEY as string
 
 const MODEL_URL = '/roboflow-infer/american-sign-language-letters/6'
 
-// All 26 ASL static-hand letters
-// const ASL_CLASSES = 'A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z'
-
 export type ASLPrediction = {
   letter: string
   confidence: number
@@ -28,44 +25,6 @@ export function videoFrameToBase64(video: HTMLVideoElement): string {
   canvas.getContext('2d')!.drawImage(video, 0, 0)
   return canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
 }
-
-/** Walk an unknown object tree looking for an array of prediction-like objects */
-// function extractPredictions(obj: unknown, depth = 0): any[] {
-//   if (depth > 6 || obj === null || typeof obj !== 'object') return []
-
-//   // If it's an array and looks like predictions, return it
-//   if (Array.isArray(obj)) {
-//     const hasPredShape = obj.some(
-//       (item) => item && typeof item === 'object' && ('class' in item || 'label' in item || 'letter' in item)
-//     )
-//     if (hasPredShape) return obj
-//     // Recurse into array elements
-//     for (const item of obj) {
-//       const found = extractPredictions(item, depth + 1)
-//       if (found.length > 0) return found
-//     }
-//     return []
-//   }
-
-//   // Recurse into object values — prioritise keys that sound like predictions
-//   const priority = ['predictions', 'detections', 'results', 'outputs', 'classes']
-//   const record = obj as Record<string, unknown>
-
-//   for (const key of priority) {
-//     if (key in record) {
-//       const found = extractPredictions(record[key], depth + 1)
-//       if (found.length > 0) return found
-//     }
-//   }
-
-//   // Fall back to all keys
-//   for (const val of Object.values(record)) {
-//     const found = extractPredictions(val, depth + 1)
-//     if (found.length > 0) return found
-//   }
-
-//   return []
-// }
 
 /** Normalise a raw prediction item into ASLPrediction */
 function normalisePred(p: any): ASLPrediction | null {
