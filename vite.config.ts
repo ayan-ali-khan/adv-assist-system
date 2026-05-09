@@ -23,7 +23,9 @@ export default defineConfig({
 
           // React + react-dom
           if (id.includes('node_modules/react/') ||
-              id.includes('node_modules/react-dom/')) return 'react-vendor'
+              id.includes('node_modules/react-dom/') ||
+              id.includes('node_modules/react-router') ||
+              id.includes('node_modules/react-router-dom/')) return 'react-vendor'
 
           // Everything else in node_modules
           if (id.includes('node_modules')) return 'vendor'
