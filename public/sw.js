@@ -1,5 +1,5 @@
 // Simple service worker for PWA
-const CACHE_NAME = 'advance-assistance-system-v2'
+const CACHE_NAME = 'saarthi-ai-v1'
 
 // URLs that must never be intercepted by the SW
 // (API calls, Firebase, external CDNs)

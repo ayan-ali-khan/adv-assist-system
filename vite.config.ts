@@ -34,6 +34,11 @@ export default defineConfig({
 
   server: {
     proxy: {
+      '/roboflow-infer': {
+        target: 'https://serverless.roboflow.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/roboflow-infer/, ''),
+      },
       '/roboflow': {
         target: 'https://serverless.roboflow.com',
         changeOrigin: true,
@@ -43,11 +48,6 @@ export default defineConfig({
         target: 'https://serverless.roboflow.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/roboflow-workflow/, ''),
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.setHeader('Content-Type', 'application/json')
-          })
-        },
       },
     },
   },

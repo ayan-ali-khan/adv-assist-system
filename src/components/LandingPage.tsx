@@ -125,7 +125,11 @@ export function LandingPage({
       {/* ── Navbar ── */}
       <nav className="aas-nav">
         <div className="aas-nav-brand">
-          <div className="aas-nav-logo">👁</div>
+          <img
+            src="/favicon.png"
+            alt="SAARTHI AI logo"
+            className="aas-nav-favicon"
+          />
           <span className="aas-nav-name">SAARTHI AI</span>
         </div>
         <div className="aas-nav-right">

@@ -79,6 +79,15 @@
   flex-shrink: 0;
 }
 
+/* PNG favicon in navbar */
+.aas-nav-favicon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .aas-nav-name {
   font-family: 'Syne', sans-serif;
   font-weight: 700;

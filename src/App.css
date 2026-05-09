@@ -1264,3 +1264,305 @@
   .landingStatItem:last-child { border-bottom: none; }
   .landingFooter { flex-direction: column; align-items: center; text-align: center; }
 }
+
+/* ─── User dropdown ──────────────────────────────────────────────────────────── */
+.userDropWrap {
+  position: relative;
+}
+
+.userDropTrigger {
+  appearance: none;
+  background: transparent;
+  border: 1.5px solid;
+  border-radius: 10px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.light-theme .userDropTrigger { border-color: rgba(0,0,0,0.15); }
+.dark-theme .userDropTrigger,
+:root:not(.light-theme) .userDropTrigger { border-color: rgba(255,255,255,0.15); }
+
+.userDropTrigger:hover { background: rgba(128,128,128,0.1); }
+
+.userDropAvatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #00bcd4;
+  color: #000;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.userDropName {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userDropCaret {
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+.userDropMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  border-radius: 12px;
+  border: 1px solid;
+  z-index: 200;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  animation: dropIn 0.15s ease;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.light-theme .userDropMenu {
+  background: #fff;
+  border-color: rgba(0,0,0,0.1);
+}
+.dark-theme .userDropMenu,
+:root:not(.light-theme) .userDropMenu {
+  background: #1a1a1a;
+  border-color: rgba(255,255,255,0.1);
+}
+
+.userDropInfo {
+  padding: 14px 16px 10px;
+}
+
+.userDropInfoName {
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userDropInfoEmail {
+  font-size: 12px;
+  opacity: 0.5;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userDropDivider {
+  height: 1px;
+  margin: 0;
+}
+
+.light-theme .userDropDivider { background: rgba(0,0,0,0.08); }
+.dark-theme .userDropDivider,
+:root:not(.light-theme) .userDropDivider { background: rgba(255,255,255,0.08); }
+
+.userDropItem {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.userDropItem:hover { background: rgba(128,128,128,0.1); }
+
+.userDropItem--danger { color: #f44336; }
+.userDropItem--danger:hover { background: rgba(244,67,54,0.08); }
+
+/* ─── App nav (Detection / Sign Language tabs) ───────────────────────────────── */
+.appNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid;
+}
+
+.light-theme .appNav { border-color: rgba(0,0,0,0.1); background: rgba(0,0,0,0.03); }
+.dark-theme .appNav,
+:root:not(.light-theme) .appNav { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); }
+
+.appNavLink {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.55;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.appNavLink:hover {
+  opacity: 0.9;
+  background: rgba(128,128,128,0.1);
+}
+
+.appNavLink--active {
+  opacity: 1;
+  color: #000;
+  background: #00bcd4;
+}
+
+.dark-theme .appNavLink--active,
+:root:not(.light-theme) .appNavLink--active {
+  color: #000;
+  background: #00bcd4;
+}
+
+/* ─── User dropdown ──────────────────────────────────────────────────────────── */
+.userDropWrap {
+  position: relative;
+}
+
+.userDropTrigger {
+  appearance: none;
+  background: transparent;
+  border: 1.5px solid;
+  border-radius: 10px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.light-theme .userDropTrigger { border-color: rgba(0,0,0,0.15); }
+.dark-theme .userDropTrigger,
+:root:not(.light-theme) .userDropTrigger { border-color: rgba(255,255,255,0.15); }
+
+.userDropTrigger:hover { background: rgba(128,128,128,0.1); }
+
+.userDropAvatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #00bcd4;
+  color: #000;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.userDropName {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userDropCaret {
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+.userDropMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  border-radius: 12px;
+  border: 1px solid;
+  z-index: 200;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  animation: dropIn 0.15s ease;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.light-theme .userDropMenu { background: #fff; border-color: rgba(0,0,0,0.1); }
+.dark-theme .userDropMenu,
+:root:not(.light-theme) .userDropMenu { background: #1a1a1a; border-color: rgba(255,255,255,0.1); }
+
+.userDropInfo { padding: 14px 16px 10px; }
+
+.userDropInfoName {
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userDropInfoEmail {
+  font-size: 12px;
+  opacity: 0.5;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userDropDivider { height: 1px; margin: 0; }
+.light-theme .userDropDivider { background: rgba(0,0,0,0.08); }
+.dark-theme .userDropDivider,
+:root:not(.light-theme) .userDropDivider { background: rgba(255,255,255,0.08); }
+
+.userDropItem {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.userDropItem:hover { background: rgba(128,128,128,0.1); }
+.userDropItem--danger { color: #f44336; }
+.userDropItem--danger:hover { background: rgba(244,67,54,0.08); }
+
+/* ─── Sign Language page layout ─────────────────────────────────────────────── */
+.signLangPanel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}

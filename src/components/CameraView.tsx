@@ -6,9 +6,11 @@ import {
   FaceDetector,
   FaceLandmarker,
   GestureRecognizer,
+  ObjectDetector,
   type FaceDetectorResult,
   type FaceLandmarkerResult,
   type GestureRecognizerResult,
+  type ObjectDetectorResult,
 } from '@mediapipe/tasks-vision'
 import {
   detectCurrencyFromBase64,
@@ -25,7 +27,7 @@ type Props = {
   onSpeak: (text: string) => void
 }
 
-export type ActiveMode = 'idle' | 'faces' | 'faceLandmarks' | 'gesture' | 'ocr' | 'currency' | 'asl'
+export type ActiveMode = 'idle' | 'objects' | 'faces' | 'faceLandmarks' | 'gesture' | 'ocr' | 'currency' | 'asl'
 
 export type CameraViewHandle = {
   setMode: (mode: ActiveMode) => void
@@ -104,6 +106,7 @@ export const CameraView = forwardRef<CameraViewHandle, Props>(function CameraVie
   const faceDetectorRef    = useRef<FaceDetector | null>(null)
   const faceLandmarkerRef  = useRef<FaceLandmarker | null>(null)
   const gestureRecogRef    = useRef<GestureRecognizer | null>(null)
+  const objectDetectorRef  = useRef<ObjectDetector | null>(null)
   const ocrWorkerRef       = useRef<any>(null)
   const lastAnnounceRef    = useRef<number>(0)
   const lastGestureRef     = useRef<string>('')
@@ -146,6 +149,107 @@ export const CameraView = forwardRef<CameraViewHandle, Props>(function CameraVie
   async function getVision() {
     return FilesetResolver.forVisionTasks(MP_WASM)
   }
+
+  // ─── Object Detection loop ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeMode !== 'objects') { clearCanvas(); return }
+    if (!camera.isReady) return
+
+    const videoEl = camera.videoRef.current
+    if (!videoEl) return
+
+    let cancelled = false
+
+    async function startLoop() {
+      onStatus('Loading object detector…')
+
+      if (!objectDetectorRef.current) {
+        const vision = await getVision()
+        objectDetectorRef.current = await ObjectDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          scoreThreshold: 0.4,
+          maxResults: 10,
+        })
+      }
+
+      onStatus('Detecting objects…')
+
+      const loop = () => {
+        if (cancelled || activeModeRef.current !== 'objects') { clearCanvas(); return }
+        if (!videoEl!.videoWidth || !videoEl!.videoHeight) { requestAnimationFrame(loop); return }
+
+        syncCanvas(videoEl!)
+        const canvas = canvasRef.current!
+        const ctx    = canvas.getContext('2d')!
+        const W = canvas.width
+        const H = canvas.height
+
+        let result: ObjectDetectorResult
+        try {
+          result = objectDetectorRef.current!.detectForVideo(videoEl!, performance.now())
+        } catch {
+          requestAnimationFrame(loop)
+          return
+        }
+
+        ctx.clearRect(0, 0, W, H)
+        ctx.font         = '14px system-ui'
+        ctx.textBaseline = 'top'
+
+        for (const det of result.detections) {
+          const bb = det.boundingBox
+          if (!bb) continue
+          const { originX: x, originY: y, width: w, height: h } = bb
+          const cat   = det.categories[0]
+          const name  = cat?.categoryName ?? 'object'
+          const score = cat?.score ?? 0
+          const label = `${name} ${(score * 100).toFixed(0)}%`
+
+          // Bounding box — white stroke
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth   = 2.5
+          ctx.strokeRect(x, y, w, h)
+
+          // Label pill
+          const pad = 5
+          const tw  = ctx.measureText(label).width
+          ctx.fillStyle = 'rgba(0,0,0,0.72)'
+          ctx.fillRect(x, y, tw + pad * 2, 22)
+          ctx.fillStyle = '#ffffff'
+          ctx.fillText(label, x + pad, y + 3)
+        }
+
+        // Announce every 8 s
+        const count = result.detections.length
+        if (count > 0 && Date.now() - lastAnnounceRef.current > 8000) {
+          lastAnnounceRef.current = Date.now()
+          const names = [...new Set(
+            result.detections.slice(0, 5).map(d => d.categories[0]?.categoryName ?? 'object')
+          )]
+          onSpeak(`I can see ${names.join(', ')}`)
+        }
+
+        if (count > 0) {
+          onStatus(`${count} object${count > 1 ? 's' : ''} detected`)
+        } else {
+          onStatus('No objects detected')
+        }
+
+        requestAnimationFrame(loop)
+      }
+
+      requestAnimationFrame(loop)
+    }
+
+    startLoop().catch((e) => onStatus(e instanceof Error ? e.message : 'Object detection error'))
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, camera.isReady])
 
   // ─── Face Detection loop ───────────────────────────────────────────────────
   useEffect(() => {
