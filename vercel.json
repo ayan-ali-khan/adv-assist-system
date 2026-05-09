@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/roboflow-infer/:path*",
+      "destination": "https://serverless.roboflow.com/:path*"
+    },
+    {
+      "source": "/roboflow/:path*",
+      "destination": "https://serverless.roboflow.com/:path*"
+    },
+    {
+      "source": "/roboflow-workflow/:path*",
+      "destination": "https://serverless.roboflow.com/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
