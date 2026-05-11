@@ -757,3 +757,78 @@
     flex-wrap: wrap;
   }
 }
+
+/* ── Mobile nav ── */
+@media (max-width: 600px) {
+  .aas-nav {
+    padding: 0.75rem 1rem;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .aas-nav-right {
+    gap: 8px;
+  }
+
+  .aas-btn-ghost,
+  .aas-btn-solid {
+    padding: 6px 14px;
+    font-size: 12px;
+  }
+
+  .aas-hero {
+    padding: 3rem 1rem 2rem;
+    min-height: auto;
+  }
+
+  .aas-hero-h1 {
+    font-size: clamp(2.5rem, 10vw, 4rem);
+    letter-spacing: -1.5px;
+  }
+
+  .aas-hero-sub {
+    font-size: 0.95rem;
+  }
+
+  .aas-hero-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .aas-cta-primary,
+  .aas-cta-secondary {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .aas-stats {
+    grid-template-columns: repeat(2, 1fr);
+    margin: 1.5rem 1rem 0;
+  }
+
+  .aas-section {
+    padding: 2.5rem 1rem;
+  }
+
+  .aas-how-section {
+    padding: 2.5rem 1rem;
+  }
+
+  .aas-cta-section {
+    margin: 0 1rem 2rem;
+    padding: 2.5rem 1.25rem;
+  }
+
+  .aas-cta-title {
+    font-size: clamp(1.6rem, 7vw, 2.5rem);
+    letter-spacing: -1px;
+  }
+
+  .aas-footer {
+    padding: 1.25rem 1rem;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+}

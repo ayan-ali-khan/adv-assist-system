@@ -1566,3 +1566,278 @@
   gap: 20px;
   overflow-y: auto;
 }
+
+/* signLangMain uses the same 2-col grid as appMain on desktop */
+.signLangMain {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 12px;
+}
+
+@media (min-width: 980px) {
+  .signLangMain {
+    grid-template-columns: 1.2fr 1fr; /* camera slightly wider than panel */
+    align-items: start;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — App page, Sign Language page, Header, Camera
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tablet: 768px–979px — single column, side-by-side controls ── */
+@media (max-width: 979px) {
+  .appMain {
+    grid-template-columns: 1fr;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  /* Camera takes full width, taller on tablet */
+  .cameraStage {
+    aspect-ratio: 4 / 3;
+  }
+
+  /* Controls card: two-column button grid */
+  .controlsCard {
+    padding: 14px;
+  }
+
+  .featureGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Reset nth-child column spans for 2-col grid */
+  .featureGrid .featureBtn:nth-child(4),
+  .featureGrid .featureBtn:nth-child(5) {
+    grid-column: auto;
+  }
+
+  /* Sign lang page: stack camera on top, panel below */
+  .signLangMain {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Mobile: ≤ 640px — full single column, large camera ── */
+@media (max-width: 640px) {
+  /* Header: compact */
+  .appHeader {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .appSubtitle {
+    display: none; /* hide long subtitle on small screens */
+  }
+
+  .appNav {
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .appNavLink {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .userDropTrigger {
+    padding: 5px 8px;
+  }
+
+  /* Camera: taller aspect ratio on mobile for better visibility */
+  .cameraStage {
+    aspect-ratio: 3 / 4;  /* portrait — fills more vertical space */
+  }
+
+  .cameraCard {
+    padding: 8px;
+  }
+
+  .controlsCard {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  /* Feature grid: 2 columns on mobile */
+  .featureGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .featureGrid .featureBtn:nth-child(4),
+  .featureGrid .featureBtn:nth-child(5) {
+    grid-column: auto;
+  }
+
+  .featureBtnLabel {
+    font-size: 12px;
+  }
+
+  .featureBtnDesc {
+    font-size: 10px;
+  }
+
+  .featureBtn {
+    padding: 10px 8px 8px;
+  }
+
+  /* Status rows: stack label above value */
+  .statusRow {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .statusLabel {
+    font-size: 11px;
+    opacity: 0.55;
+  }
+
+  .statusValue {
+    font-size: 14px;
+  }
+
+  /* Buttons: full width */
+  .buttonRow {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 12px 10px;
+    font-size: 14px;
+  }
+
+  /* Currency upload: stack vertically */
+  .currencyUploadRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .uploadBtn {
+    width: 100%;
+  }
+
+  /* Sign language page */
+  .signLangMain {
+    grid-template-columns: 1fr;
+  }
+
+  .signLangPanel {
+    padding: 10px;
+    gap: 16px;
+  }
+
+  /* Sign strip: smaller images on mobile */
+  .signCell img {
+    width: 52px !important;
+    height: 58px !important;
+  }
+
+  /* ASL letter display */
+  .aslLetter {
+    font-size: 42px;
+  }
+}
+
+/* ── Very small: ≤ 400px ── */
+@media (max-width: 400px) {
+  .appTitle {
+    font-size: 14px;
+  }
+
+  .appNavLink {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .featureGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .featureGrid .featureBtn:nth-child(n) {
+    grid-column: auto;
+  }
+
+  .cameraStage {
+    aspect-ratio: 1 / 1; /* square on very small screens */
+  }
+}
+
+/* ── AppShell header: hide subtitle on narrow screens ── */
+@media (max-width: 760px) {
+  .appSubtitle {
+    display: none;
+  }
+
+  .appHeaderRight {
+    gap: 4px;
+  }
+}
+
+/* ── Landing page: additional mobile fixes ── */
+@media (max-width: 480px) {
+  .landingNav {
+    padding: 12px 16px;
+  }
+
+  .landingNavTitle {
+    font-size: 14px;
+  }
+
+  .landingHero {
+    padding: 40px 16px 32px;
+    gap: 16px;
+  }
+
+  .landingHeroCta {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .landingCtaBtn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .landingStats {
+    padding: 0 16px 32px;
+  }
+
+  .landingStatItem {
+    min-width: 50%;
+    border-right: none;
+    border-bottom: 1px solid rgba(128,128,128,0.12);
+  }
+
+  .landingStatItem:nth-child(odd) {
+    border-right: 1px solid rgba(128,128,128,0.12);
+  }
+
+  .landingStatItem:last-child,
+  .landingStatItem:nth-last-child(2):nth-child(odd) {
+    border-bottom: none;
+  }
+
+  .landingFeatures {
+    padding: 40px 16px;
+  }
+
+  .landingHow {
+    padding: 40px 16px;
+  }
+
+  .landingCTABanner {
+    padding: 40px 20px;
+    margin: 0 16px 40px;
+  }
+
+  .landingFooter {
+    padding: 20px 16px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+}
