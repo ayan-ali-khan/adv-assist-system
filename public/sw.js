@@ -43,38 +43,44 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
+  // Ignore non-http(s) schemes (chrome-extension, blob, data, etc.)
+  if (!url.protocol.startsWith('http')) return
+
   // Never intercept non-GET or external API calls
   if (request.method !== 'GET' || shouldPassthrough(request.url)) {
     event.respondWith(fetch(request))
     return
   }
 
-  // For HTML navigation — network first, fallback to cache
-  // This prevents blank screen on first load
+  // Network-first for HTML navigation
   if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          const clone = res.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+          if (res.ok) {
+            const clone = res.clone()  // clone BEFORE returning
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+          }
           return res
         })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
+        .catch(() =>
+          caches.match(request).then((cached) => cached || caches.match('/'))
+        )
     )
     return
   }
 
-  // For JS/CSS/assets — cache first, then network, then cache the response
+  // Cache-first for assets
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached
       return fetch(request).then((res) => {
-        if (res.ok) {
+        if (res.ok && res.status < 400) {
           const clone = res.clone()
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
         }
         return res
       })
-    })
+    }).catch(() => caches.match('/'))
   )
 })
